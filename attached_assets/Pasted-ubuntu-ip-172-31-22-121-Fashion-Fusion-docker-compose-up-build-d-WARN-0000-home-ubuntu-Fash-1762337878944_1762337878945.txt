@@ -1,0 +1,87 @@
+ubuntu@ip-172-31-22-121:~/Fashion-Fusion$ docker compose up --build -d
+WARN[0000] /home/ubuntu/Fashion-Fusion/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+[+] Running 12/12
+ ✔ postgres Pulled                                                                                                                                                  5.9s 
+   ✔ 2d35ebdb57d9 Already exists                                                                                                                                    0.0s 
+   ✔ 68d154bb2020 Pull complete                                                                                                                                     0.1s 
+   ✔ 36ffbe736a3e Pull complete                                                                                                                                     0.2s 
+   ✔ fe767c9b6ce5 Pull complete                                                                                                                                     0.3s 
+   ✔ 00d06ba48f3d Pull complete                                                                                                                                     0.5s 
+   ✔ f1ef2039be87 Pull complete                                                                                                                                     5.4s 
+   ✔ 77229534494d Pull complete                                                                                                                                     5.5s 
+   ✔ 586fd3f22b39 Pull complete                                                                                                                                     5.5s 
+   ✔ a7cf639c3010 Pull complete                                                                                                                                     5.5s 
+   ✔ 576fcebcd39a Pull complete                                                                                                                                     5.5s 
+   ✔ 0a6aa09020da Pull complete                                                                                                                                     5.6s 
+[+] Building 2.9s (32/38)                                                                                                                                                
+ => [internal] load local bake definitions                                                                                                                          0.0s
+ => => reading from stdin 1.01kB                                                                                                                                    0.0s
+ => [backend internal] load build definition from Dockerfile                                                                                                        0.1s
+ => => transferring dockerfile: 608B                                                                                                                                0.0s
+ => [frontend internal] load build definition from Dockerfile                                                                                                       0.0s
+ => => transferring dockerfile: 536B                                                                                                                                0.0s
+ => [frontend internal] load metadata for docker.io/library/nginx:alpine                                                                                            0.4s
+ => [frontend internal] load metadata for docker.io/library/node:20-alpine                                                                                          0.4s
+ => [backend internal] load .dockerignore                                                                                                                           0.0s
+ => => transferring context: 267B                                                                                                                                   0.0s
+ => [backend builder  1/13] FROM docker.io/library/node:20-alpine@sha256:6178e78b972f79c335df281f4b7674a2d85071aae2af020ffa39f0a770265435                           0.0s
+ => [frontend internal] load build context                                                                                                                          1.0s
+ => => transferring context: 31.10MB                                                                                                                                1.0s
+ => CACHED [frontend stage-1 1/3] FROM docker.io/library/nginx:alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14                       0.0s
+ => [backend internal] load build context                                                                                                                           0.1s
+ => => transferring context: 66.04kB                                                                                                                                0.1s
+ => CACHED [frontend builder  2/13] WORKDIR /app                                                                                                                    0.0s
+ => CACHED [backend builder  3/11] COPY package*.json ./                                                                                                            0.0s
+ => CACHED [backend stage-1 4/8] RUN npm ci --only=production                                                                                                       0.0s
+ => CACHED [backend builder  4/11] COPY tsconfig.json ./                                                                                                            0.0s
+ => CACHED [backend builder  5/11] COPY drizzle.config.ts ./                                                                                                        0.0s
+ => CACHED [backend builder  6/11] RUN npm ci                                                                                                                       0.0s
+ => CACHED [backend builder  7/11] COPY server ./server                                                                                                             0.0s
+ => CACHED [backend builder  8/11] COPY shared ./shared                                                                                                             0.0s
+ => CACHED [backend builder  9/11] COPY types ./types                                                                                                               0.0s
+ => CACHED [backend builder 10/11] COPY migrations ./migrations                                                                                                     0.0s
+ => ERROR [backend builder 11/11] RUN npm run build:server                                                                                                          1.9s
+ => CACHED [frontend builder  3/13] COPY package*.json ./                                                                                                           0.0s
+ => CACHED [frontend builder  4/13] COPY tsconfig.json ./                                                                                                           0.0s
+ => CACHED [frontend builder  5/13] COPY vite.config.ts ./                                                                                                          0.0s
+ => CACHED [frontend builder  6/13] COPY postcss.config.js ./                                                                                                       0.0s
+ => CACHED [frontend builder  7/13] COPY tailwind.config.ts ./                                                                                                      0.0s
+ => CACHED [frontend builder  8/13] COPY components.json ./                                                                                                         0.0s
+ => CACHED [frontend builder  9/13] RUN npm ci                                                                                                                      0.0s
+ => CACHED [frontend builder 10/13] COPY client ./client                                                                                                            0.0s
+ => CACHED [frontend builder 11/13] COPY shared ./shared                                                                                                            0.0s
+ => CACHED [frontend builder 12/13] COPY attached_assets ./attached_assets                                                                                          0.0s
+ => CANCELED [frontend builder 13/13] RUN npm run build                                                                                                             1.1s
+------
+ > [backend builder 11/11] RUN npm run build:server:
+1.648 
+1.648 > rest-express@1.0.0 build:server
+1.648 > esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+1.648 
+1.765 ✘ [ERROR] Could not resolve "../vite.config"
+1.765 
+1.765     server/vite.ts:8:23:
+1.765       8 │ import viteConfig from "../vite.config";
+1.765         ╵                        ~~~~~~~~~~~~~~~~
+1.765 
+1.779 1 error
+------
+Dockerfile:16
+
+--------------------
+
+  14 |     COPY migrations ./migrations
+
+  15 |     
+
+  16 | >>> RUN npm run build:server
+
+  17 |     
+
+  18 |     FROM node:20-alpine
+
+--------------------
+
+target backend: failed to solve: process "/bin/sh -c npm run build:server" did not complete successfully: exit code: 1
+
+ubuntu@ip-172-31-22-121:~/Fashion-Fusion$ 
