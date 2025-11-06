@@ -49,6 +49,12 @@ Open http://localhost:5000
 2. Start services
 
 ```powershell
+cat > .env << 'EOF'
+POSTGRES_PASSWORD=SimplePass123
+JWT_ACCESS_SECRET=st7NdZ0ajIy2VDgShc+pZl2BpgXwN8ULBUEJoYrVwyM=
+JWT_REFRESH_SECRET=We9OJic3RyUZcVOlZknOFtpe/Mc3cpnWEO83D2NtYc0=
+EOF
+
 docker compose up --build
 ```
 
