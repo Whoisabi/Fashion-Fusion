@@ -76,14 +76,19 @@ The server auto-seeds the database on first run if empty. Manual seeding: `npm r
 - Real-time updates via WebSockets
 
 ## Recent Changes
-- **2025-11-06**: Initial Replit setup
+- **2025-11-06**: Initial Replit setup and optimization
   - Configured Vite HMR for Replit proxy (clientPort: 443)
   - Set up workflow to run on port 5000
-  - Database requires provisioning via Replit UI
-  - **Updated seed data to fetch products from DummyJSON API**
-    - Pulls 100+ products with real images from web (no local storage)
+  - Database provisioned and migrations applied
+  - **Switched to web-hosted product images (DummyJSON API)**
+    - Pulls 100 products with real images from web (no local storage needed)
     - Product images hosted on CDN: https://cdn.dummyjson.com
-    - Works in all environments: Docker, Replit, local development
+    - Categories: Women (52), Men (16), Accessories (32)
+    - Works perfectly in all environments: Docker, Replit, local development
+  - **Cleaned up attached_assets folder**
+    - Removed 26 old generated images
+    - Removed development screenshots and text files
+    - Folder now empty and ready for future use
 
 ## User Preferences
 None specified yet.
