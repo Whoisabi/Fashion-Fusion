@@ -89,6 +89,8 @@ The server auto-seeds the database on first run if empty. Manual seeding: `npm r
     - Removed 26 old generated images from local storage
     - Removed development screenshots and text files
     - Removed attached_assets COPY commands from Docker files
+    - Updated hero image imports to use web-hosted image (Unsplash)
+    - Fixed Docker build errors from missing local images
     - Folder now empty (static file serving kept for future use)
     - Docker containers no longer copy empty folder during build
 

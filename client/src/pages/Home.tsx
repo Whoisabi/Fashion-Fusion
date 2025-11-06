@@ -8,7 +8,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
-import heroImage from '@assets/generated_images/Fashion_lifestyle_hero_banner_d5d60e0e.png';
+const heroImage = "https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1920&q=80";
 
 export default function Home() {
   const { data: products = [], isLoading: productsLoading } = useQuery({
