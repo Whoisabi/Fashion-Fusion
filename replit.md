@@ -85,10 +85,12 @@ The server auto-seeds the database on first run if empty. Manual seeding: `npm r
     - Product images hosted on CDN: https://cdn.dummyjson.com
     - Categories: Women (52), Men (16), Accessories (32)
     - Works perfectly in all environments: Docker, Replit, local development
-  - **Cleaned up attached_assets folder**
-    - Removed 26 old generated images
+  - **Cleaned up attached_assets folder and Docker files**
+    - Removed 26 old generated images from local storage
     - Removed development screenshots and text files
-    - Folder now empty and ready for future use
+    - Removed attached_assets COPY commands from Docker files
+    - Folder now empty (static file serving kept for future use)
+    - Docker containers no longer copy empty folder during build
 
 ## User Preferences
 None specified yet.

@@ -42,7 +42,6 @@ COPY --from=builder /app/dist ./dist
 COPY shared ./shared
 COPY server ./server
 COPY migrations ./migrations
-COPY attached_assets ./attached_assets
 COPY drizzle.config.ts ./drizzle.config.ts
 COPY vite.config.ts ./vite.config.ts
 COPY tsconfig.json ./tsconfig.json

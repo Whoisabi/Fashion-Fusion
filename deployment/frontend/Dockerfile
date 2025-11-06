@@ -14,7 +14,6 @@ RUN npm ci
 COPY tsconfig.json vite.config.ts postcss.config.js tailwind.config.ts components.json ./
 COPY client ./client
 COPY shared ./shared
-COPY attached_assets ./attached_assets
 
 # Build the production bundle
 RUN npx vite build
