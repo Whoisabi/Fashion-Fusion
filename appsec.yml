@@ -3,7 +3,7 @@ Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: "<TASK_DEFINITION>"
+        TaskDefinition: <TASK_DEFINITION>
         LoadBalancerInfo:
-          ContainerName: "<CONTAINER_NAME_FRONTEND>"
+          ContainerName: "fashion-frontend"
           ContainerPort: 80
