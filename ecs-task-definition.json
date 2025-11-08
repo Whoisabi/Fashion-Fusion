@@ -59,15 +59,15 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/database-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/database-url-YrnhZs"
         },
         {
           "name": "JWT_ACCESS_SECRET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-access-secret"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-access-secret-K4FBwU"
         },
         {
           "name": "JWT_REFRESH_SECRET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-refresh-secret"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-refresh-secret-56VAyt"
         }
       ],
       "healthCheck": {
