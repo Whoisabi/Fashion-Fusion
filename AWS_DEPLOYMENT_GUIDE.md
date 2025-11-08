@@ -63,6 +63,7 @@ aws ecr describe-repositories \
 - `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/fashion-frontend`
 - `<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/fashion-backend`
 
+183631348877.dkr.ecr.us-east-1.amazonaws.com/fashion-frontend
 ---
 
 ## Step 2: Create RDS PostgreSQL Database
@@ -81,16 +82,37 @@ aws ecr describe-repositories \
 
 ### Option B: Using AWS CLI
 ```bash
+# First create vpc subnet-group and security group
+aws ec2 describe-vpcs --output table
+# List your VPC subnets to pick at least two private subnets in different Availability Zones:
+
+aws ec2 describe-subnets \
+  --filters "Name=vpc-id,Values=vpc-0ed2789978e42d3f1" \
+  --query "Subnets[*].{ID:SubnetId,AZ:AvailabilityZone,Name:Tags[?Key=='Name']|[0].Value}" \
+  --output table
+
+aws rds create-db-subnet-group \
+  --db-subnet-group-name fashion-db-subnet-group \
+  --db-subnet-group-description "Subnet group for Fashion Fusion DB" \
+  --subnet-ids subnet-0a7c311e17a414fe4  subnet-085f384f49fce050b subnet-0bf79100952f0a44f \
+  --region us-east-1 
+
+# rds subnet group
+aws rds describe-db-subnet-groups --output table
+
+#vpc Security group
+aws ec2 describe-security-groups --output table
+
 aws rds create-db-instance \
   --db-instance-identifier fashion-db \
   --db-instance-class db.t3.micro \
   --engine postgres \
-  --engine-version 16.1 \
+  --engine-version 17.2 \
   --master-username postgres \
-  --master-user-password YOUR_STRONG_PASSWORD \
+  --master-user-password STRONG_PASSWORD \
   --allocated-storage 20 \
-  --vpc-security-group-ids sg-XXXXXXXX \
-  --db-subnet-group-name your-db-subnet-group \
+  --vpc-security-group-ids sg-072190dc3348e9dca \
+  --db-subnet-group-name default-vpc-0ed2789978e42d3f1 \
   --no-publicly-accessible
 ```
 
@@ -101,7 +123,7 @@ aws rds describe-db-instances \
   --query 'DBInstances[0].Endpoint.Address' \
   --output text
 ```
-
+fashion-db.cng8gm8gi1fu.us-east-1.rds.amazonaws.com
 ---
 
 ## Step 3: Store Secrets in AWS Secrets Manager
@@ -311,8 +333,17 @@ aws elbv2 create-load-balancer \
   --scheme internet-facing \
   --type application \
   --region us-east-1
-```
 
+
+# List security group rules
+aws ec2 describe-security-groups \
+  --query "SecurityGroups[*].{ID:GroupId,Name:GroupName}" \
+  --output table
+
+#list subnets
+aws ec2 describe-subnets --output table
+
+```
 ### 7.2: Create Target Group
 
 ```bash
