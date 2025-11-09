@@ -8,13 +8,14 @@ env:
     - BACKEND_IMAGE_URI
 
 phases:
+  install:
+    commands:
+      - echo "Installing utilities..."
+      - apt-get update -y && apt-get install -y jq
+
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
-      - |
-        # Ensure AWS account ID is available (fallback to STS)
-        AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}
-        export AWS_ACCOUNT_ID
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
@@ -22,33 +23,30 @@ phases:
 
   build:
     commands:
-      - |
-        set -e
-        echo "Building Docker images..."
-
-        echo "Building frontend image..."
-        docker build --pull -f deployment/frontend/Dockerfile -t $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
-        docker tag $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
-        export FRONTEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG"
-
-        echo "Building backend image..."
-        docker build --pull -f deployment/backend/Dockerfile -t $ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
-        docker tag $ECR_REPOSITORY_BACKEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
-        export BACKEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG"
+      - echo "Building Docker images..."
+      
+      - echo "Building frontend image..."
+      - docker build -f deployment/frontend/Dockerfile -t $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
+      - docker tag $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
+      - export FRONTEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG"
+      
+      - echo "Building backend image..."
+      - docker build -f deployment/backend/Dockerfile -t $ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
+      - docker tag $ECR_REPOSITORY_BACKEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
+      - export BACKEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG"
 
   post_build:
     commands:
-      - echo "Build completed on $(date)"
+      - bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"0\" ]; then exit 1; fi"
+      - echo "Build completed on `date`"
       - echo "Pushing images to ECR..."
       - docker push $FRONTEND_IMAGE_URI
       - docker push $BACKEND_IMAGE_URI
-      - echo "Pushed frontend image: $FRONTEND_IMAGE_URI"
-      - echo "Pushed backend image: $BACKEND_IMAGE_URI"
-
+      - echo "Pushed frontend image $FRONTEND_IMAGE_URI"
+      - echo "Pushed backend image $BACKEND_IMAGE_URI"
+      
       - echo "Writing imagedefinitions.json..."
-      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' \
-          "$CONTAINER_NAME_FRONTEND" "$FRONTEND_IMAGE_URI" \
-          "$CONTAINER_NAME_BACKEND" "$BACKEND_IMAGE_URI" > imagedefinitions.json
+      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_FRONTEND $FRONTEND_IMAGE_URI $CONTAINER_NAME_BACKEND $BACKEND_IMAGE_URI > imagedefinitions.json
       - cat imagedefinitions.json
 
 artifacts:
