@@ -1,0 +1,366 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Fashion Fusion minimal infra skeleton: creates ECR repos, ECS cluster, LogGroup,
+  IAM roles for ECS task execution and CodeBuild, a CodeBuild project and a
+  skeleton CodePipeline that expects a CodeStar connection ARN for the GitHub
+  source. This template intentionally asks for several parameters (subnets,
+  security groups, GitHub connection) so it can plug into your existing VPC.
+
+Parameters:
+  AwsAccountId:
+    Type: String
+    Description: AWS account ID (used to form ECR image URIs)
+
+  GitHubConnectionArn:
+    Type: String
+    Description: "CodeStar connection ARN for GitHub (example: arn:aws:codestar-connections:...)"
+
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository in owner/repo format (e.g. Whoisabi/Fashion-Fusion)
+
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Branch to use as the pipeline source
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of at least two subnet IDs for Fargate tasks
+
+  ServiceSecurityGroup:
+    Type: String
+    Description: Security Group ID to attach to the ECS service ENIs
+
+  AlbTargetGroupArn:
+    Type: String
+    Default: ''
+    Description: (Optional) ALB target group ARN to attach to the ECS service. Leave empty to skip ALB integration.
+
+Resources:
+  FrontendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: fashion-frontend
+
+  BackendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: fashion-backend
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: fashion-cluster
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/fashion-fusion
+      RetentionInDays: 30
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-ecsTaskExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECSSecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AwsAccountId}:secret:fashion-fusion/*"
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-ecsTaskRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-codebuild-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildECRandS3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AwsAccountId}:log-group:/aws/codebuild/*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::codepipeline-*/*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${PipelineArtifactBucket}/*"
+                  - !Sub "arn:aws:s3:::${PipelineArtifactBucket}"
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: fashion-fusion-build
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AwsAccountId
+          - Name: ECR_REPOSITORY_FRONTEND
+            Value: fashion-frontend
+          - Name: ECR_REPOSITORY_BACKEND
+            Value: fashion-backend
+          - Name: CONTAINER_NAME_FRONTEND
+            Value: fashion-frontend
+          - Name: CONTAINER_NAME_BACKEND
+            Value: fashion-backend
+      Source:
+        Type: CODEPIPELINE
+
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "fashion-fusion-artifacts-${AwsAccountId}-${AWS::Region}"
+
+  FashionPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: fashion-fusion-pipeline
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: ECSDeploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: '1'
+              Configuration:
+                ClusterName: !Ref ECSCluster
+                ServiceName: fashion-service
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-pipeline-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:UpdateService
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt CodeBuildRole.Arn
+                  - !GetAtt ECSTaskExecutionRole.Arn
+                  - !GetAtt ECSTaskRole.Arn
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::${PipelineArtifactBucket}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketAcl
+                Resource: !Sub "arn:aws:s3:::${PipelineArtifactBucket}"
+
+  ECSTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: fashion-fusion-task
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '1024'
+      Memory: '2048'
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: fashion-frontend
+          Image: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-frontend:latest"
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/fashion-fusion
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+        - Name: fashion-backend
+          Image: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-backend:latest"
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+          Environment:
+            - Name: PORT
+              Value: '3000'
+            - Name: NODE_ENV
+              Value: production
+            - Name: DOCKER_MODE
+              Value: 'true'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/fashion-fusion
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      ServiceName: fashion-service
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref ECSTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref SubnetIds
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          AssignPublicIp: ENABLED
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+
+Outputs:
+  FrontendEcrUri:
+    Description: URI for frontend ECR repo
+    Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-frontend"
+
+  BackendEcrUri:
+    Description: URI for backend ECR repo
+    Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-backend"
+
+  PipelineName:
+    Description: Name of the created CodePipeline
+    Value: fashion-fusion-pipeline

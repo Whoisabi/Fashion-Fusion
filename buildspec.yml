@@ -8,10 +8,6 @@ env:
     - BACKEND_IMAGE_URI
 
 phases:
-  install:
-    commands:
-      - echo "Installing utilities..."
-      - apt-get update -y && apt-get install -y jq
 
   pre_build:
     commands:
