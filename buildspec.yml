@@ -12,6 +12,10 @@ phases:
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
+      - |
+        # Ensure AWS account id is available (fallback to STS)
+        AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}
+        export AWS_ACCOUNT_ID
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
@@ -20,14 +24,25 @@ phases:
   build:
     commands:
       - echo "Building Docker images..."
-      
+      - |
+        retry() {
+          attempts=0
+          until [ $attempts -ge 3 ]
+          do
+            "$@" && break
+            attempts=$((attempts+1))
+            echo "Command failed. Retry #$attempts after backoff..."
+            sleep $((attempts * 5))
+          done
+          if [ $attempts -ge 3 ]; then return 1; fi
+        }
+
       - echo "Building frontend image..."
-      - docker build -f deployment/frontend/Dockerfile -t $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
+      - retry docker build -f deployment/frontend/Dockerfile -t $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG .
       - docker tag $ECR_REPOSITORY_FRONTEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
       - export FRONTEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG"
-      
       - echo "Building backend image..."
-      - docker build -f deployment/backend/Dockerfile -t $ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
+      - retry docker build -f deployment/backend/Dockerfile -t $ECR_REPOSITORY_BACKEND:$IMAGE_TAG .
       - docker tag $ECR_REPOSITORY_BACKEND:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
       - export BACKEND_IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG"
 
