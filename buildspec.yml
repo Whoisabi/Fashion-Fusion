@@ -8,7 +8,6 @@ env:
     - BACKEND_IMAGE_URI
 
 phases:
-
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
@@ -36,7 +35,10 @@ phases:
             echo "Command failed. Retry #$attempts after backoff..."
             sleep $((attempts * 5))
           done
-          if [ $attempts -ge 3 ]; then return 1; fi
+          if [ $attempts -ge 3 ]; then
+            echo "Command failed after 3 attempts"
+            return 1
+          fi
         }
 
         echo "Building frontend image..."
@@ -52,15 +54,17 @@ phases:
   post_build:
     commands:
       - bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"0\" ]; then exit 1; fi"
-      - echo "Build completed on `date`"
+      - echo "Build completed on $(date)"
       - echo "Pushing images to ECR..."
       - docker push $FRONTEND_IMAGE_URI
       - docker push $BACKEND_IMAGE_URI
       - echo "Pushed frontend image $FRONTEND_IMAGE_URI"
       - echo "Pushed backend image $BACKEND_IMAGE_URI"
-      
+
       - echo "Writing imagedefinitions.json..."
-      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_FRONTEND $FRONTEND_IMAGE_URI $CONTAINER_NAME_BACKEND $BACKEND_IMAGE_URI > imagedefinitions.json
+      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' \
+          "$CONTAINER_NAME_FRONTEND" "$FRONTEND_IMAGE_URI" \
+          "$CONTAINER_NAME_BACKEND" "$BACKEND_IMAGE_URI" > imagedefinitions.json
       - cat imagedefinitions.json
 
 artifacts:
