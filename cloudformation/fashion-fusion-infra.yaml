@@ -42,8 +42,14 @@ Parameters:
     Default: ''
     Description: ARN of the Secrets Manager secret that contains DATABASE_URL (optional). If empty, no secret will be injected.
 
+  DockerHubSecretArn:
+    Type: String
+    Default: ''
+    Description: ARN of a Secrets Manager secret containing Docker Hub credentials in JSON: {"username":"...","password":"..."}. Optional.
+
 Conditions:
   HasDatabaseSecret: !Not [ !Equals [ !Ref DatabaseSecretArn, '' ] ]
+  HasDockerHubSecret: !Not [ !Equals [ !Ref DockerHubSecretArn, '' ] ]
 
 Resources:
   FrontendECRRepo:
@@ -55,16 +61,6 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: fashion-backend
-
-  BaseNodeECRRepo:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: fashion-base-node
-
-  BaseNginxECRRepo:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: fashion-base-nginx
 
   ECSCluster:
     Type: AWS::ECS::Cluster
@@ -170,6 +166,10 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${PipelineArtifactBucket}/*"
                   - !Sub "arn:aws:s3:::${PipelineArtifactBucket}"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !If [ HasDockerHubSecret, !Ref DockerHubSecretArn, !Ref AWS::NoValue ]
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -192,10 +192,8 @@ Resources:
             Value: fashion-frontend
           - Name: ECR_REPOSITORY_BACKEND
             Value: fashion-backend
-          - Name: BASE_NODE_IMAGE
-            Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-base-node:20-alpine"
-          - Name: BASE_NGINX_IMAGE
-            Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-base-nginx:1.27-alpine"
+          - Name: DOCKERHUB_SECRET_ARN
+            Value: !Ref DockerHubSecretArn
           - Name: CONTAINER_NAME_FRONTEND
             Value: fashion-frontend
           - Name: CONTAINER_NAME_BACKEND
@@ -405,11 +403,3 @@ Outputs:
   PipelineName:
     Description: Name of the created CodePipeline
     Value: fashion-fusion-pipeline
-
-  BaseNodeEcrUri:
-    Description: URI for base node ECR repo
-    Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-base-node"
-
-  BaseNginxEcrUri:
-    Description: URI for base nginx ECR repo
-    Value: !Sub "${AwsAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-base-nginx"

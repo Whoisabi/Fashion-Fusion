@@ -22,6 +22,16 @@ phases:
     commands:
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - |
+        if [ -n "$DOCKERHUB_SECRET_ARN" ]; then
+          echo "Logging in to Docker Hub (from Secrets Manager)..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ARN" --query SecretString --output text)
+          DOCKERHUB_USER=$(echo "$SECRET_JSON" | jq -r .username)
+          DOCKERHUB_PASS=$(echo "$SECRET_JSON" | jq -r .password)
+          echo "$DOCKERHUB_PASS" | docker login --username "$DOCKERHUB_USER" --password-stdin
+        else
+          echo "DOCKERHUB_SECRET_ARN not set, skipping Docker Hub login"
+        fi
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
       - echo "Using image tag $IMAGE_TAG"
