@@ -1,5 +1,8 @@
 # ---------- Stage 1: Build ----------
-FROM node:20-alpine AS builder
+# Allow the base node image to be supplied via build-arg so you can point to
+# Amazon ECR Public (or a private mirror) without editing the Dockerfile.
+ARG BASE_NODE_IMAGE=node:20-alpine
+FROM ${BASE_NODE_IMAGE} AS builder
 
 # Set working directory
 WORKDIR /app
@@ -19,7 +22,10 @@ COPY shared ./shared
 RUN npx vite build
 
 # ---------- Stage 2: Production ----------
-FROM nginx:1.27-alpine
+# Allow the nginx base image to be supplied via build-arg so you can point to
+# Amazon ECR Public (or a private mirror) without editing the Dockerfile.
+ARG BASE_NGINX_IMAGE=nginx:1.27-alpine
+FROM ${BASE_NGINX_IMAGE}
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist/public /usr/share/nginx/html

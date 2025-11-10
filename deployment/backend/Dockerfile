@@ -1,5 +1,8 @@
 # ---------- Stage 1: Build Backend ----------
-FROM node:20-alpine AS builder
+# Allow the base node image to be supplied via build-arg so builds can use
+# Amazon ECR Public images or a private mirror without editing the Dockerfile.
+ARG BASE_NODE_IMAGE=node:20-alpine
+FROM ${BASE_NODE_IMAGE} AS builder
 
 # Set working directory
 WORKDIR /app
@@ -22,12 +25,12 @@ COPY types ./types
 RUN npm run build:server
 
 # ---------- Stage 2: Runtime ----------
-FROM node:20-alpine
+FROM ${BASE_NODE_IMAGE}
 
 WORKDIR /app
 
-# Install postgresql-client for pg_isready
-RUN apk add --no-cache postgresql-client
+# Install postgresql-client for pg_isready and curl for health checks
+RUN apk add --no-cache postgresql-client curl
 
 # Copy package files
 COPY package*.json ./
