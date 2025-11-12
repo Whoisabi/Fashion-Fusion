@@ -21,11 +21,26 @@ phases:
       - echo "Logging in to Docker Hub..."
       - |
         if [ -n "$DOCKERHUB_SECRET_ARN" ]; then
+          echo "--- DEBUGGING DOCKER HUB LOGIN ---"
+          echo "WARNING: The following line will print your Docker Hub credentials to the logs."
+          echo "Please rotate your credentials after this build."
+          
           SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ARN" --output json)
           SECRET_STRING=$(echo "$SECRET_JSON" | jq -r .SecretString)
+          
+          echo "SECRET_STRING: $SECRET_STRING"
+          
+          echo "--- END DEBUGGING ---"
+
           DOCKER_USER=$(echo "$SECRET_STRING" | jq -r .username)
           DOCKER_PASS=$(echo "$SECRET_STRING" | jq -r .password)
-          echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+          
+          if [ -n "$DOCKER_USER" ] && [ -n "$DOCKER_PASS" ]; then
+            echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+          else
+            echo "Failed to parse username and password from secret."
+            exit 1
+          fi
         else
           echo "DOCKERHUB_SECRET_ARN not provided, skipping Docker Hub login."
         fi
