@@ -13,9 +13,10 @@ phases:
       docker: 20
     commands:
       - echo "Installing jq and curl..."
-      - apt-get update -y && apt-get install -y jq curl
-    # Enable Docker-in-Docker
-    privileged: true
+      - apt-get update -y
+      - apt-get install -y jq curl
+  # Enable Docker-in-Docker
+  privileged: true
 
   pre_build:
     commands:

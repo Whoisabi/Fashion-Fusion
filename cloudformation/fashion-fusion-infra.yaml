@@ -22,6 +22,10 @@ Parameters:
     Default: main
     Description: Branch to use as the pipeline source
 
+  VpcId:
+    Type: String
+    Description: VpcId for the ALB target group
+
   SubnetIds:
     Type: CommaDelimitedList
     Description: Comma-separated list of at least two subnet IDs for Fargate tasks
@@ -179,7 +183,7 @@ Resources:
       TargetType: ip
       Port: 80
       Protocol: HTTP
-      VpcId: !Select [0, !Split ['/', !Select [0, !Split [':', !Select [0, !Ref ServiceSecurityGroup]]]]]
+      VpcId: !Ref VpcId
       HealthCheckPath: /
       Matcher:
         HttpCode: 200-399
@@ -238,6 +242,8 @@ Resources:
   # --- ECS Service ---
   ECSService:
     Type: AWS::ECS::Service
+    DependsOn:
+      - ALBListener
     Properties:
       Cluster: !Ref ECSCluster
       ServiceName: fashion-service
@@ -253,8 +259,6 @@ Resources:
         - ContainerName: fashion-frontend
           ContainerPort: 80
           TargetGroupArn: !Ref ALBTargetGroup
-      DependsOn:
-        - ALBListener
 
   # --- Pipeline Role ---
   PipelineRole:
