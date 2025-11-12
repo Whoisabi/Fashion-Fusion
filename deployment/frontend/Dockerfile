@@ -16,6 +16,7 @@ RUN npm ci
 COPY tsconfig.json vite.config.ts postcss.config.js tailwind.config.ts components.json ./
 COPY client ./client
 COPY shared ./shared
+COPY server ./server
 
 # Build the production bundle
 RUN npm run build
