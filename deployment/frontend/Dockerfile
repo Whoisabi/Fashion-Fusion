@@ -18,7 +18,7 @@ COPY client ./client
 COPY shared ./shared
 
 # Build the production bundle
-RUN npm run build --prefix client
+RUN npm run build
 
 # ---------- Stage 2: Production ----------
 FROM ${BASE_NGINX_IMAGE}
