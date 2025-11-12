@@ -156,6 +156,8 @@ Resources:
             Value: fashion-frontend
           - Name: ECR_REPOSITORY_BACKEND
             Value: fashion-backend
+          - Name: DOCKERHUB_SECRET_ARN
+            Value: !Ref DockerHubSecretArn
       Source:
         Type: CODEPIPELINE
 

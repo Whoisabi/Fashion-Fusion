@@ -18,6 +18,14 @@ phases:
     commands:
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo "Logging in to Docker Hub..."
+      - |
+        if [ -n "$DOCKERHUB_SECRET_ARN" ]; then
+          DOCKER_CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id $DOCKERHUB_SECRET_ARN --query SecretString --output text)
+          echo $DOCKER_CREDENTIALS | docker login --username $(echo $DOCKER_CREDENTIALS | jq -r .username) --password-stdin
+        else
+          echo "DOCKERHUB_SECRET_ARN not provided, skipping Docker Hub login."
+        fi
       - echo "Creating ECR repositories if not exist..."
       - aws ecr describe-repositories --repository-names $ECR_REPOSITORY_FRONTEND || aws ecr create-repository --repository-name $ECR_REPOSITORY_FRONTEND
       - aws ecr describe-repositories --repository-names $ECR_REPOSITORY_BACKEND || aws ecr create-repository --repository-name $ECR_REPOSITORY_BACKEND
