@@ -21,9 +21,10 @@ phases:
       - echo "Logging in to Docker Hub..."
       - |
         if [ -n "$DOCKERHUB_SECRET_ARN" ]; then
-          DOCKER_CREDENTIALS_JSON=$(aws secretsmanager get-secret-value --secret-id $DOCKERHUB_SECRET_ARN --query SecretString --output text)
-          DOCKER_USER=$(echo $DOCKER_CREDENTIALS_JSON | jq -r .username)
-          DOCKER_PASS=$(echo $DOCKER_CREDENTIALS_JSON | jq -r .password)
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$DOCKERHUB_SECRET_ARN" --output json)
+          SECRET_STRING=$(echo "$SECRET_JSON" | jq -r .SecretString)
+          DOCKER_USER=$(echo "$SECRET_STRING" | jq -r .username)
+          DOCKER_PASS=$(echo "$SECRET_STRING" | jq -r .password)
           echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
         else
           echo "DOCKERHUB_SECRET_ARN not provided, skipping Docker Hub login."
