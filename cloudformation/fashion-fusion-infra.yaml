@@ -44,9 +44,21 @@ Parameters:
     Default: ''
     Description: 'ARN of a Secrets Manager secret containing Docker Hub credentials in JSON'
 
+  JwtAccessSecretArn:
+    Type: String
+    Default: ''
+    Description: 'ARN of the Secrets Manager secret that contains JWT_ACCESS_SECRET (optional but recommended)'
+
+  JwtRefreshSecretArn:
+    Type: String
+    Default: ''
+    Description: 'ARN of the Secrets Manager secret that contains JWT_REFRESH_SECRET (optional but recommended)'
+
 Conditions:
   HasDatabaseSecret: !Not [!Equals [!Ref DatabaseSecretArn, '']]
   HasDockerHubSecret: !Not [!Equals [!Ref DockerHubSecretArn, '']]
+  HasJwtAccessSecret: !Not [!Equals [!Ref JwtAccessSecretArn, '']]
+  HasJwtRefreshSecret: !Not [!Equals [!Ref JwtRefreshSecretArn, '']]
 
 Resources:
   # --- ECR Repositories ---
@@ -217,6 +229,9 @@ Resources:
           Essential: true
           PortMappings:
             - ContainerPort: 80
+          DependsOn:
+            - ContainerName: fashion-backend
+              Condition: HEALTHY
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -231,9 +246,31 @@ Resources:
           Environment:
             - Name: NODE_ENV
               Value: production
+            - Name: PORT
+              Value: '3000'
+            - Name: DOCKER_MODE
+              Value: 'true'
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !If [HasDatabaseSecret, !Ref DatabaseSecretArn, !Ref AWS::NoValue]
+            - !If
+              - HasJwtAccessSecret
+              - Name: JWT_ACCESS_SECRET
+                ValueFrom: !Ref JwtAccessSecretArn
+              - !Ref AWS::NoValue
+            - !If
+              - HasJwtRefreshSecret
+              - Name: JWT_REFRESH_SECRET
+                ValueFrom: !Ref JwtRefreshSecretArn
+              - !Ref AWS::NoValue
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:3000/api/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
           LogConfiguration:
             LogDriver: awslogs
             Options:
