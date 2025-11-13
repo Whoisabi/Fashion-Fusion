@@ -17,7 +17,23 @@ GitHub → CodePipeline → CodeBuild → ECR → ECS Fargate
 - **Load Balancer**: Application Load Balancer (ALB)
 
 ---
-
+aws cloudformation deploy `
+    --template-file cloudformation/fashion-fusion-infra.yaml `
+    --stack-name fashion-fusion-infra `
+    --parameter-overrides `
+        AwsAccountId='183631348877' `
+        GitHubConnectionArn='arn:aws:codestar-connections:us-east-1:183631348877:connection/d8ecb6f3-c558-4cf1-8248-cc3e32dd5714' `
+        GitHubRepo='Whoisabi/Fashion-Fusion' `
+        GitHubBranch='main' `
+        VpcId='vpc-0ed2789978e42d3f1' `
+        SubnetIds='subnet-085f384f49fce050b,subnet-0bf79100952f0a44f' `
+        ServiceSecurityGroup='sg-0a472b67f81fd8045' `
+        AlbSecurityGroup='sg-0442640b52ab727e6' `
+        DatabaseSecretArn='arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/database-url-YrnhZs' `
+        DockerHubSecretArn='arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/dockerhub-credentials-NVNJZ2' `
+        JwtAccessSecretArn='arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-access-secret-K4FBwU' `
+        JwtRefreshSecretArn='arn:aws:secretsmanager:us-east-1:183631348877:secret:fashion-fusion/jwt-refresh-secret-56VAyt' `
+    --capabilities CAPABILITY_NAMED_IAM
 ## Prerequisites
 
 ### 1. AWS Account Setup

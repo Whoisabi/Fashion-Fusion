@@ -145,6 +145,10 @@ Resources:
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !If [HasDockerHubSecret, !Ref DockerHubSecretArn, !Ref AWS::NoValue]
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
 
   # --- CodeBuild Project ---
   CodeBuildProject:
