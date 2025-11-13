@@ -322,9 +322,12 @@ Resources:
                   - codebuild:StartBuild
                   - ecs:*
                   - iam:PassRole
-                  - codestar-connections:UseConnection
                   - s3:*
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
 
   # --- CodePipeline ---
   FashionPipeline:
