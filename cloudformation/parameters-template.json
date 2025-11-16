@@ -1,0 +1,54 @@
+[
+  {
+    "ParameterKey": "GitHubConnectionArn",
+    "ParameterValue": "arn:aws:codestar-connections:REGION:ACCOUNT_ID:connection/CONNECTION_ID"
+  },
+  {
+    "ParameterKey": "GitHubRepo",
+    "ParameterValue": "YourUsername/YourRepo"
+  },
+  {
+    "ParameterKey": "GitHubBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-xxxxxxxxx"
+  },
+  {
+    "ParameterKey": "PublicSubnetIds",
+    "ParameterValue": "subnet-public1,subnet-public2"
+  },
+  {
+    "ParameterKey": "PrivateSubnetIds",
+    "ParameterValue": "subnet-private1,subnet-private2"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t3.micro"
+  },
+  {
+    "ParameterKey": "DBAllocatedStorage",
+    "ParameterValue": "20"
+  },
+  {
+    "ParameterKey": "DBName",
+    "ParameterValue": "fashion_db"
+  },
+  {
+    "ParameterKey": "DBMasterUsername",
+    "ParameterValue": "postgres"
+  },
+  {
+    "ParameterKey": "DesiredTaskCount",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "TaskCpu",
+    "ParameterValue": "1024"
+  },
+  {
+    "ParameterKey": "TaskMemory",
+    "ParameterValue": "2048"
+  }
+]

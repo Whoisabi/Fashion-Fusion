@@ -1,0 +1,791 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Complete Fashion Fusion E-Commerce Infrastructure with RDS PostgreSQL,
+  Secrets Manager, ECS Fargate, ALB, and CI/CD Pipeline - Fully Automated
+
+Parameters:
+  # GitHub Configuration
+  GitHubConnectionArn:
+    Type: String
+    Description: "CodeStar connection ARN for GitHub (create manually once via console)"
+    
+  GitHubRepo:
+    Type: String
+    Description: "GitHub repository in owner/repo format (e.g. Whoisabi/Fashion-Fusion)"
+    
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: "Branch to use as the pipeline source"
+
+  # Network Configuration
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC ID where resources will be deployed"
+    
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "At least 2 public subnets in different AZs (for ALB and ECS)"
+    
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "At least 2 private subnets in different AZs (for RDS)"
+
+  # Database Configuration
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+      - db.t4g.micro
+      - db.t4g.small
+    Description: "RDS instance type"
+    
+  DBAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 100
+    Description: "Database storage size in GB"
+    
+  DBName:
+    Type: String
+    Default: fashion_db
+    Description: "PostgreSQL database name"
+    
+  DBMasterUsername:
+    Type: String
+    Default: postgres
+    Description: "Master username for RDS PostgreSQL"
+
+  # ECS Configuration  
+  DesiredTaskCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: "Number of ECS tasks to run"
+    
+  TaskCpu:
+    Type: String
+    Default: '1024'
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+      - '2048'
+    Description: "Task CPU units (256 = 0.25 vCPU, 1024 = 1 vCPU)"
+    
+  TaskMemory:
+    Type: String
+    Default: '2048'
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+    Description: "Task memory in MB"
+
+Resources:
+  # =============================================================================
+  # SECRETS MANAGER - Auto-generated secrets
+  # =============================================================================
+  
+  # Database Master Password (auto-generated)
+  DBPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: fashion-fusion/db-password
+      Description: "Auto-generated RDS master password"
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+        RequireEachIncludedType: true
+        
+  # JWT Access Token Secret (auto-generated)
+  JwtAccessSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: fashion-fusion/jwt-access-secret
+      Description: "Auto-generated JWT access token secret"
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\%'
+        
+  # JWT Refresh Token Secret (auto-generated)
+  JwtRefreshSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: fashion-fusion/jwt-refresh-secret
+      Description: "Auto-generated JWT refresh token secret"
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\%'
+
+  # =============================================================================
+  # SECURITY GROUPS
+  # =============================================================================
+  
+  # ALB Security Group
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: fashion-fusion-alb-sg
+      GroupDescription: "Security group for Fashion Fusion ALB"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: "Allow HTTP from internet"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: "Allow HTTPS from internet"
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-alb-sg
+          
+  # ECS Tasks Security Group
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: fashion-fusion-ecs-sg
+      GroupDescription: "Security group for Fashion Fusion ECS tasks"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: "Allow frontend traffic from ALB"
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: "Allow backend traffic from ALB"
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: "Allow HTTPS to internet (for DummyJSON CDN)"
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !Ref RDSSecurityGroup
+          Description: "Allow PostgreSQL to RDS"
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-ecs-sg
+          
+  # RDS Security Group
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: fashion-fusion-rds-sg
+      GroupDescription: "Security group for Fashion Fusion RDS"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: "Allow PostgreSQL from ECS tasks"
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-rds-sg
+
+  # =============================================================================
+  # RDS DATABASE
+  # =============================================================================
+  
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: fashion-fusion-db-subnet-group
+      DBSubnetGroupDescription: "Subnet group for Fashion Fusion RDS"
+      SubnetIds: !Ref PrivateSubnetIds
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-db-subnet-group
+          
+  # RDS PostgreSQL Instance
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: fashion-fusion-db
+      DBName: !Ref DBName
+      Engine: postgres
+      EngineVersion: '16.3'
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      EnableCloudwatchLogsExports:
+        - postgresql
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-db
+          
+  # Database URL Secret (constructed from RDS endpoint)
+  DatabaseURLSecret:
+    Type: AWS::SecretsManager::Secret
+    DependsOn: RDSInstance
+    Properties:
+      Name: fashion-fusion/database-url
+      Description: "PostgreSQL connection string for Fashion Fusion"
+      SecretString: !Sub
+        - 'postgresql://${Username}:${Password}@${Endpoint}:5432/${DBName}'
+        - Username: !Ref DBMasterUsername
+          Password: !Sub '{{resolve:secretsmanager:${DBPasswordSecret}::password}}'
+          Endpoint: !GetAtt RDSInstance.Endpoint.Address
+          DBName: !Ref DBName
+
+  # =============================================================================
+  # ECR REPOSITORIES
+  # =============================================================================
+  
+  FrontendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: fashion-frontend
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+          
+  BackendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: fashion-backend
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+
+  # =============================================================================
+  # ECS CLUSTER & LOGS
+  # =============================================================================
+  
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: fashion-cluster
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+          
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/fashion-fusion
+      RetentionInDays: 30
+
+  # =============================================================================
+  # IAM ROLES
+  # =============================================================================
+  
+  # ECS Task Execution Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-ecsTaskExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource:
+                  - !Ref DatabaseURLSecret
+                  - !Ref JwtAccessSecret
+                  - !Ref JwtRefreshSecret
+                  - !Ref DBPasswordSecret
+                  
+  # ECS Task Role
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-ecsTaskRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+            
+  # CodeBuild Role
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-codebuild-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${PipelineArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
+
+  # =============================================================================
+  # APPLICATION LOAD BALANCER
+  # =============================================================================
+  
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: fashion-fusion-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-alb
+          
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: fashion-fusion-tg
+      TargetType: ip
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200-399
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Name
+          Value: fashion-fusion-tg
+          
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # =============================================================================
+  # ECS TASK DEFINITION & SERVICE
+  # =============================================================================
+  
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - DatabaseURLSecret
+      - RDSInstance
+    Properties:
+      Family: fashion-fusion-task
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        # Frontend Container
+        - Name: fashion-frontend
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-frontend:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+          DependsOn:
+            - ContainerName: fashion-backend
+              Condition: HEALTHY
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+              
+        # Backend Container
+        - Name: fashion-backend
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-backend:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: '3000'
+            - Name: DOCKER_MODE
+              Value: 'true'
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Ref DatabaseURLSecret
+            - Name: JWT_ACCESS_SECRET
+              ValueFrom: !Ref JwtAccessSecret
+            - Name: JWT_REFRESH_SECRET
+              ValueFrom: !Ref JwtRefreshSecret
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:3000/api/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+              
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ALBListener
+      - RDSInstance
+    Properties:
+      Cluster: !Ref ECSCluster
+      ServiceName: fashion-service
+      DesiredCount: !Ref DesiredTaskCount
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      TaskDefinition: !Ref ECSTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref PublicSubnetIds
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - ContainerName: fashion-frontend
+          ContainerPort: 80
+          TargetGroupArn: !Ref ALBTargetGroup
+      HealthCheckGracePeriodSeconds: 120
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      Tags:
+        - Key: Name
+          Value: fashion-service
+
+  # =============================================================================
+  # CI/CD PIPELINE
+  # =============================================================================
+  
+  # S3 Bucket for Pipeline Artifacts
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'fashion-fusion-artifacts-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+            
+  # CodeBuild Project
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: fashion-fusion-build
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: ECR_REPOSITORY_FRONTEND
+            Value: fashion-frontend
+          - Name: ECR_REPOSITORY_BACKEND
+            Value: fashion-backend
+      Source:
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: /aws/codebuild/fashion-fusion
+          
+  # Pipeline Role
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fashion-pipeline-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${PipelineArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt CodeBuildProject.Arn
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt ECSTaskExecutionRole.Arn
+                  - !GetAtt ECSTaskRole.Arn
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GitHubConnectionArn
+                
+  # CodePipeline
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: fashion-fusion-pipeline
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        # Source Stage
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+                
+        # Build Stage
+        - Name: Build
+          Actions:
+            - Name: BuildDockerImages
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+                
+        # Deploy Stage
+        - Name: Deploy
+          Actions:
+            - Name: DeployToECS
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: '1'
+              Configuration:
+                ClusterName: !Ref ECSCluster
+                ServiceName: fashion-service
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+
+# =============================================================================
+# OUTPUTS
+# =============================================================================
+
+Outputs:
+  # Database Outputs
+  RDSEndpoint:
+    Description: RDS PostgreSQL endpoint
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}-RDSEndpoint'
+      
+  DatabaseURLSecretArn:
+    Description: ARN of the DATABASE_URL secret
+    Value: !Ref DatabaseURLSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseURLSecret'
+      
+  # Application Outputs
+  ApplicationURL:
+    Description: Application Load Balancer URL
+    Value: !Sub 'http://${ALB.DNSName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApplicationURL'
+      
+  ALBDNSName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALBDNSName'
+      
+  # ECR Outputs
+  FrontendECRUri:
+    Description: URI for frontend ECR repository
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-frontend'
+    Export:
+      Name: !Sub '${AWS::StackName}-FrontendECR'
+      
+  BackendECRUri:
+    Description: URI for backend ECR repository
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/fashion-backend'
+    Export:
+      Name: !Sub '${AWS::StackName}-BackendECR'
+      
+  # Pipeline Outputs
+  PipelineName:
+    Description: Name of the CodePipeline
+    Value: !Ref Pipeline
+    Export:
+      Name: !Sub '${AWS::StackName}-Pipeline'
+      
+  # Security Group Outputs
+  ECSSecurityGroupId:
+    Description: Security Group ID for ECS tasks
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSSecurityGroup'
+      
+  RDSSecurityGroupId:
+    Description: Security Group ID for RDS
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-RDSSecurityGroup'
+      
+  # Secret ARNs
+  JwtAccessSecretArn:
+    Description: ARN of JWT access secret
+    Value: !Ref JwtAccessSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-JwtAccessSecret'
+      
+  JwtRefreshSecretArn:
+    Description: ARN of JWT refresh secret
+    Value: !Ref JwtRefreshSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-JwtRefreshSecret'

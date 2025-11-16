@@ -75,6 +75,46 @@ The server auto-seeds the database on first run if empty. Manual seeding: `npm r
 - Responsive design with theme toggle (light/dark)
 - Real-time updates via WebSockets
 
+## AWS Deployment
+
+The project includes **100% automated CloudFormation deployment** for AWS ECS Fargate with RDS and Secrets Manager.
+
+### Quick Deploy to AWS
+
+```bash
+# 1. Create parameters file from template
+cp cloudformation/parameters-template.json cloudformation/parameters.json
+
+# 2. Edit parameters.json with your AWS values
+
+# 3. Deploy (15-20 minutes)
+aws cloudformation create-stack \
+  --stack-name fashion-fusion \
+  --template-body file://cloudformation/complete-stack.yaml \
+  --parameters file://cloudformation/parameters.json \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
+```
+
+### Documentation Files
+
+- **`CLOUDFORMATION_DEPLOYMENT_GUIDE.md`** - Complete automated deployment guide
+- **`AWS_ECS_FARGATE_DEPLOYMENT.md`** - Manual step-by-step AWS setup
+- **`AWS_TROUBLESHOOTING_CHECKLIST.md`** - Fix database and image loading issues
+- **`cloudformation/README.md`** - CloudFormation templates overview
+
+### What Gets Auto-Created
+
+✅ RDS PostgreSQL with auto-generated password  
+✅ Secrets Manager (DATABASE_URL, JWT secrets)  
+✅ Security Groups with proper rules  
+✅ ECS Fargate cluster and service  
+✅ Application Load Balancer  
+✅ CI/CD Pipeline (CodePipeline + CodeBuild)  
+✅ CloudWatch logging
+
+**Cost:** ~$98/month (optimizable to ~$66/month)
+
 ## Recent Changes
 - **2025-11-16**: GitHub import setup completed for Replit environment
   - Installed all npm dependencies (500 packages)
